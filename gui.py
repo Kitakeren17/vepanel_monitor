@@ -14,7 +14,80 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 active_bot = None
 
-def start_telegram_listener(token):
+def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=is_headless)
+            context = browser.new_context()
+            page = context.new_page()
+
+            page.goto(url)
+            page.fill("input[name='username'], input[type='text'], input[placeholder*='Username']", user)
+            page.fill("input[name='password'], input[type='password']", pwd)
+            page.click("button[type='submit'], input[type='submit'], button:has-text('Login'), button:has-text('Sign In')")
+            
+            page.wait_for_load_state("networkidle")
+            
+            try:
+                page.get_by_text("Report", exact=False).first.click(timeout=5000)
+                time.sleep(1)
+                page.get_by_text("Deposit Report", exact=False).first.click(timeout=5000)
+            except Exception:
+                return "❌ Gagal menavigasi ke menu 'Deposit Report'. Pastikan menu tersebut ada."
+                
+            page.wait_for_load_state("networkidle")
+            time.sleep(2)
+            
+            try:
+                box = page.get_by_placeholder("Search", exact=False).first
+                box.fill(target_username)
+                page.keyboard.press("Enter")
+                time.sleep(3)
+            except:
+                try:
+                    box = page.locator("input[type='text']").first
+                    box.fill(target_username)
+                    page.keyboard.press("Enter")
+                    time.sleep(3)
+                except:
+                    pass 
+                
+            try:
+                page.get_by_text("10", exact=True).last.click(timeout=3000)
+                time.sleep(1)
+                page.get_by_text("1000", exact=True).last.click(timeout=3000)
+                time.sleep(4)
+            except:
+                pass
+                
+            rows = page.locator("tbody tr")
+            count = rows.count()
+            
+            if count == 0:
+                browser.close()
+                return f"⚠️ Tidak ada data pada tabel Deposit Report."
+                
+            found_rows = []
+            for i in range(count):
+                row_text = rows.nth(i).inner_text().strip()
+                if not row_text:
+                    continue
+                if target_username.lower() in row_text.lower():
+                    found_rows.append(row_text.replace('\t', ' | '))
+                    
+            browser.close()
+            
+            if not found_rows:
+                return f"⚠️ Tidak ditemukan riwayat deposit untuk user '<b>{target_username}</b>' di data terbaru."
+                
+            result_msg = f"✅ <b>Deposit Terakhir ditemukan untuk {target_username}:</b>\n\n"
+            result_msg += f"<code>{found_rows[0]}</code>"
+            
+            return result_msg
+    except Exception as e:
+        return f"❌ Terjadi kesalahan sistem: {e}"
+
+def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless):
     global active_bot
     if active_bot:
         active_bot.stop_polling()
@@ -44,7 +117,23 @@ def start_telegram_listener(token):
     @bot.callback_query_handler(func=lambda call: call.data == "already_checked")
     def handle_already_checked(call):
         bot.answer_callback_query(call.id, text="Data ini sudah divalidasi!")
+    @bot.message_handler(commands=['cekdepo'])
+    def handle_cekdepo(message):
+        text = message.text.strip()
+        parts = text.split()
+        if len(parts) < 2:
+            bot.reply_to(message, "⚠️ Format salah.\nGunakan: <code>/cekdepo username_player</code>", parse_mode="HTML")
+            return
+            
+        target_username = parts[1]
+        bot.reply_to(message, f"🔍 Sedang memproses pengecekan deposit untuk user: <b>{target_username}</b>...\n<i>Mohon tunggu sekitar 15 detik...</i>", parse_mode="HTML")
         
+        try:
+            result = check_user_deposit_on_demand(target_username, url, vep_user, vep_pwd, is_headless)
+            bot.reply_to(message, result, parse_mode="HTML")
+        except Exception as e:
+            bot.reply_to(message, f"❌ Terjadi kesalahan: {e}")
+            
     def poll():
         try:
             bot.polling(none_stop=True)
@@ -335,7 +424,10 @@ class App:
         self.btn_test.config(state=tk.DISABLED, bg="#bdc3c7")
         self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
         self.log("=== MEMULAI TEST RUN ===\n")
-        start_telegram_listener(self.token_var.get())
+        start_telegram_listener(
+            self.token_var.get(), self.url_var.get(), self.user_var.get(), 
+            self.pwd_var.get(), self.headless_var.get()
+        )
         
         def task():
             run_scraping_cycle(
@@ -360,7 +452,10 @@ class App:
         self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
         self.btn_stop.config(state=tk.NORMAL, bg="#e74c3c")
         self.log("=== MEMULAI PEMANTAUAN OTOMATIS (30 MENIT) ===\n")
-        start_telegram_listener(self.token_var.get())
+        start_telegram_listener(
+            self.token_var.get(), self.url_var.get(), self.user_var.get(), 
+            self.pwd_var.get(), self.headless_var.get()
+        )
         
         def loop_task():
             while self.is_monitoring:
@@ -393,7 +488,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.2.0"
+CURRENT_VERSION = "v1.3.0"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
