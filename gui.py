@@ -236,7 +236,8 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
             if today_str.startswith("0"):
                 today_str = today_str[1:]
                 
-            log(f"Mencari data untuk tanggal: '{today_str}'")
+            log(f"Menyaring {count} baris data hari ini ('{today_str}') untuk mencari:")
+            log("- Reset Password\n- Update player data: Contact\n- Deposit")
             
             if count > 0:
                 cells_0 = rows.nth(0).locator("td")
@@ -287,6 +288,11 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
                             elif "deposit" in activity_lower:
                                 reports_dp.append(report_item)
                                 sent_logs.append(log_id)
+            
+            log(f"\nSelesai menyaring! Hasil yang didapat:")
+            log(f"• Reset Password: {len(reports_rp)} data baru")
+            log(f"• Edit Kontak: {len(reports_ek)} data baru")
+            log(f"• Deposit: {len(reports_dp)} data baru\n")
             
             if reports_rp:
                 log(f"Ditemukan {len(reports_rp)} data Reset Password BARU.")
@@ -488,7 +494,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.2"
+CURRENT_VERSION = "v1.3.3"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
