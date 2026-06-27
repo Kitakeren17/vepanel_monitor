@@ -164,7 +164,7 @@ def send_telegram_message(token, chat_id, message, is_report=False, topic_id=Non
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic_dp, log_func, is_headless):
+def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_func, is_headless):
     def log(msg):
         log_func(msg + "\n")
         
@@ -231,13 +231,12 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
             
             reports_rp = []
             reports_ek = []
-            reports_dp = []
             today_str = datetime.now().strftime("%d %b %Y") 
             if today_str.startswith("0"):
                 today_str = today_str[1:]
                 
             log(f"Menyaring {count} baris data hari ini ('{today_str}') untuk mencari:")
-            log("- Reset Password\n- Update player data: Contact\n- Deposit")
+            log("- Reset Password\n- Update player data: Contact")
             
             if count > 0:
                 cells_0 = rows.nth(0).locator("td")
@@ -285,14 +284,10 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
                             elif ("update player data" in activity_lower and "contact" in activity_lower) or "edit kontak" in activity_lower:
                                 reports_ek.append(report_item)
                                 sent_logs.append(log_id)
-                            elif "deposit" in activity_lower:
-                                reports_dp.append(report_item)
-                                sent_logs.append(log_id)
             
             log(f"\nSelesai menyaring! Hasil yang didapat:")
             log(f"• Reset Password: {len(reports_rp)} data baru")
-            log(f"• Edit Kontak: {len(reports_ek)} data baru")
-            log(f"• Deposit: {len(reports_dp)} data baru\n")
+            log(f"• Edit Kontak: {len(reports_ek)} data baru\n")
             
             if reports_rp:
                 log(f"Ditemukan {len(reports_rp)} data Reset Password BARU.")
@@ -305,14 +300,8 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
                 header = f"<b>📝 LAPORAN EDIT KONTAK ({today_str})</b>\n\n"
                 full_message = header + "\n\n---\n\n".join(reports_ek)
                 send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek)
-                
-            if reports_dp:
-                log(f"Ditemukan {len(reports_dp)} data Deposit BARU.")
-                header = f"<b>💰 LAPORAN DEPOSIT ({today_str})</b>\n\n"
-                full_message = header + "\n\n---\n\n".join(reports_dp)
-                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_dp)
 
-            if reports_rp or reports_ek or reports_dp:
+            if reports_rp or reports_ek:
                 log("Semua laporan aktivitas berhasil terkirim ke Telegram (dengan tombol validasi)!")
                 # Simpan riwayat data yang sudah dikirim (maksimal 8000 data terakhir agar tidak berat)
                 try:
@@ -322,7 +311,7 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
                     pass
             else:
                 log("Tidak ada aktivitas BARU. Mengirim info rutin...")
-                no_data_msg = f"ℹ️ <b>LAPORAN RUTIN ({datetime.now().strftime('%H:%M')})</b>\n\nPengecekan selesai. Saat ini <b>TIDAK ADA</b> aktivitas Reset/Kontak/Deposit baru."
+                no_data_msg = f"ℹ️ <b>LAPORAN RUTIN ({datetime.now().strftime('%H:%M')})</b>\n\nPengecekan selesai. Saat ini <b>TIDAK ADA</b> aktivitas Reset Password / Edit Kontak baru."
                 send_telegram_message(token, chat_id, no_data_msg, topic_id=topic_rp)
                 
             log("Sesi selesai, menutup browser...\n")
@@ -384,9 +373,6 @@ class App:
         self.topic_ek_var = tk.StringVar(value=os.getenv("TOPIC_EK", "2"))
         create_input(6, "📌 Topic Edit Kontak:", self.topic_ek_var)
 
-        self.topic_dp_var = tk.StringVar(value=os.getenv("TOPIC_DP", "4"))
-        create_input(7, "📌 Topic Deposit:", self.topic_dp_var)
-
         # Options frame
         opt_frame = tk.Frame(root, padx=20, pady=10, bg="#f4f5f7")
         opt_frame.pack(fill="x", padx=10)
@@ -439,7 +425,7 @@ class App:
             run_scraping_cycle(
                 self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
                 self.token_var.get(), self.chat_var.get(), 
-                self.topic_rp_var.get(), self.topic_ek_var.get(), self.topic_dp_var.get(), 
+                self.topic_rp_var.get(), self.topic_ek_var.get(), 
                 self.log, self.headless_var.get()
             )
             self.btn_test.config(state=tk.NORMAL, bg="#3498db")
@@ -468,7 +454,7 @@ class App:
                 run_scraping_cycle(
                     self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
                     self.token_var.get(), self.chat_var.get(), 
-                    self.topic_rp_var.get(), self.topic_ek_var.get(), self.topic_dp_var.get(), 
+                    self.topic_rp_var.get(), self.topic_ek_var.get(), 
                     self.log, self.headless_var.get()
                 )
                 if not self.is_monitoring:
@@ -494,7 +480,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.3"
+CURRENT_VERSION = "v1.3.4"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
