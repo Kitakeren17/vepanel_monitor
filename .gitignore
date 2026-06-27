@@ -1,0 +1,25 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Ignore the compiled exe and spec (except we might want to keep the final exe in releases, but not git)
+*.exe
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local logs
+sent_logs.json
+*.log

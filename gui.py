@@ -1,0 +1,392 @@
+import os
+import time
+import threading
+from datetime import datetime
+import requests
+import tkinter as tk
+from tkinter import scrolledtext, messagebox, ttk
+import sys
+from dotenv import load_dotenv
+from playwright.sync_api import sync_playwright
+import re
+
+if getattr(sys, 'frozen', False):
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.environ['LOCALAPPDATA'], 'ms-playwright')
+
+load_dotenv()
+
+def send_telegram_message(token, chat_id, message):
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "HTML"
+    }
+    response = requests.post(url, json=payload)
+    return response.json()
+
+def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
+    def log(msg):
+        log_func(msg + "\n")
+        
+    log("Memulai sesi Playwright...")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=is_headless)
+            context = browser.new_context()
+            page = context.new_page()
+
+            log(f"Membuka {url}...")
+            page.goto(url)
+
+            log("Melakukan login...")
+            page.fill("input[name='username'], input[type='text'], input[placeholder*='Username']", user)
+            page.fill("input[name='password'], input[type='password']", pwd)
+            page.click("button[type='submit'], input[type='submit'], button:has-text('Login'), button:has-text('Sign In')")
+            
+            page.wait_for_load_state("networkidle")
+            log("Login berhasil! Menavigasi ke Activity Log...")
+
+            # --- NAVIGASI ---
+            try:
+                page.get_by_text("Activity Log", exact=False).first.click()
+                time.sleep(1)
+                page.get_by_text("Operator Activity Log", exact=False).first.click()
+            except Exception:
+                log("Gagal menavigasi via teks, Anda bisa klik manual jika perlu. Tunggu 3 detik...")
+                time.sleep(3)
+            
+            page.wait_for_load_state("networkidle")
+            time.sleep(2)
+
+            log("Mencari filter Activity...")
+            try:
+                try:
+                    box = page.get_by_placeholder("Search items")
+                    box.click(timeout=3000)
+                    time.sleep(1)
+                    box.fill("Reset Password")
+                    time.sleep(1)
+                    page.get_by_text(re.compile(r"Reset Password", re.IGNORECASE)).first.click(timeout=3000)
+                    log("> Berhasil memilih opsi 'Reset Password' dari dropdown")
+                except:
+                    page.locator("text='Search items'").first.click(timeout=3000)
+                    time.sleep(1)
+                    page.get_by_text(re.compile(r"Reset Password", re.IGNORECASE)).first.click(timeout=3000)
+                    log("> Berhasil klik dropdown opsi 'Reset Password'")
+                
+                time.sleep(1)
+                page.keyboard.press("Escape")
+                time.sleep(1)
+                
+                try:
+                    page.get_by_text(re.compile(r"filter", re.IGNORECASE)).first.click(timeout=3000)
+                    log("> Berhasil menekan tombol FILTER")
+                except Exception as ex:
+                    log(f"> Gagal menekan tombol FILTER (coba klik manual jika perlu).")
+                
+                log("> Menunggu 5 detik agar tabel termuat...")
+                time.sleep(5) 
+                
+                # Ubah pagination menjadi 1000
+                try:
+                    log("> Mengubah tampilan tabel menjadi 1000 baris...")
+                    page.get_by_text("10", exact=True).last.click(timeout=3000)
+                    time.sleep(1)
+                    page.get_by_text("1000", exact=True).last.click(timeout=3000)
+                    time.sleep(4)
+                    log("> Berhasil mengubah ke 1000 baris!")
+                except Exception as ep:
+                    log("> Info: Gagal ubah ke 1000 baris otomatis.")
+                
+            except Exception as e:
+                log(f"Info: Proses klik otomatis terhenti. Silakan pilih manual. Jeda 10 detik...")
+                time.sleep(10)
+            
+            log("Membaca tabel log...")
+            rows = page.locator("tbody tr")
+            count = rows.count()
+            
+            log(f"Ditemukan {count} baris data pada tabel.")
+            
+            reports = []
+            today_str = datetime.now().strftime("%d %b %Y") 
+            if today_str.startswith("0"):
+                today_str = today_str[1:]
+                
+            log(f"Mencari data untuk tanggal: '{today_str}'")
+            
+            if count > 0:
+                cells_0 = rows.nth(0).locator("td")
+                if cells_0.count() >= 3:
+                    dbg_time = cells_0.nth(0).inner_text().strip()
+                    dbg_act = cells_0.nth(2).inner_text().strip()
+                    log(f"-> DEBUG BARIS 1: Waktu='{dbg_time}', Activity='{dbg_act}'")
+            
+            # Memuat riwayat data yang sudah dikirim
+            import json
+            sent_logs_file = "sent_logs.json"
+            sent_logs = []
+            if os.path.exists(sent_logs_file):
+                try:
+                    with open(sent_logs_file, 'r') as f:
+                        sent_logs = json.load(f)
+                except:
+                    pass
+
+            for i in range(count):
+                row = rows.nth(i)
+                cells = row.locator("td")
+                
+                if cells.count() >= 6:
+                    time_text = cells.nth(0).inner_text().strip()
+                    operator = cells.nth(1).inner_text().strip()
+                    activity = cells.nth(2).inner_text().strip()
+                    player = cells.nth(3).inner_text().strip()
+                    ip_addr = cells.nth(5).inner_text().strip()
+                    
+                    if "Reset Password" in activity and today_str in time_text:
+                        log_id = f"{time_text}_{operator}_{player}"
+                        if log_id not in sent_logs:
+                            report_item = (
+                                f"⏰ <b>Waktu:</b> {time_text}\n"
+                                f"👤 <b>Operator:</b> {operator}\n"
+                                f"🎯 <b>Player:</b> {player}\n"
+                                f"🌐 <b>IP:</b> {ip_addr}"
+                            )
+                            reports.append(report_item)
+                            sent_logs.append(log_id)
+            
+            if reports:
+                log(f"Ditemukan {len(reports)} data reset password BARU. Mengirim ke Telegram...")
+                header = f"<b>🚨 LAPORAN RESET PASSWORD ({today_str})</b>\n\n"
+                body = "\n\n---\n\n".join(reports)
+                
+                full_message = header + body
+                send_telegram_message(token, chat_id, full_message)
+                log("Pesan berhasil terkirim ke Telegram!")
+                
+                # Simpan riwayat data yang sudah dikirim (maksimal 5000 data terakhir agar tidak berat)
+                try:
+                    with open(sent_logs_file, 'w') as f:
+                        json.dump(sent_logs[-5000:], f)
+                except:
+                    pass
+            else:
+                log("Tidak ada aktivitas Reset Password BARU. Mengirim info ke Telegram...")
+                no_data_msg = f"ℹ️ <b>LAPORAN RUTIN ({datetime.now().strftime('%H:%M')})</b>\n\nPengecekan berhasil dilakukan. Saat ini <b>TIDAK ADA</b> aktivitas Reset Password yang baru."
+                send_telegram_message(token, chat_id, no_data_msg)
+                
+            log("Sesi selesai, menutup browser...\n")
+            time.sleep(2)
+            browser.close()
+    except Exception as e:
+        log(f"Terjadi kesalahan: {e}\n")
+
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🤖 vePanel Monitor Pro")
+        self.root.geometry("680x750")
+        self.root.configure(bg="#f4f5f7")
+        
+        self.is_monitoring = False
+        
+        title_font = ("Segoe UI", 16, "bold")
+        label_font = ("Segoe UI", 10, "bold")
+        entry_font = ("Segoe UI", 10)
+        btn_font = ("Segoe UI", 10, "bold")
+        
+        header = tk.Label(root, text="vePanel Auto Monitor", font=title_font, bg="#f4f5f7", fg="#2c3e50")
+        header.pack(pady=(15, 2))
+        
+        desc = tk.Label(root, text="Sistem Pemantauan Otomatis & Notifikasi Telegram", font=("Segoe UI", 9), bg="#f4f5f7", fg="#7f8c8d")
+        desc.pack(pady=(0, 15))
+
+        # Frame input
+        frame = tk.Frame(root, padx=20, pady=20, bg="#ffffff", highlightbackground="#dcdde1", highlightthickness=1)
+        frame.pack(fill="x", padx=20)
+
+        def create_input(row, text, var, is_password=False):
+            tk.Label(frame, text=text, font=label_font, bg="#ffffff", fg="#34495e").grid(row=row, column=0, sticky="w", pady=8)
+            entry = tk.Entry(frame, textvariable=var, font=entry_font, width=50, relief="solid", bd=1)
+            if is_password:
+                entry.config(show="•")
+            entry.grid(row=row, column=1, pady=8, padx=10)
+            return entry
+
+        self.url_var = tk.StringVar(value=os.getenv("VEPANEL_URL", "https://ag77b.vepanel.club/"))
+        create_input(0, "🌐 URL vePanel:", self.url_var)
+
+        self.user_var = tk.StringVar(value=os.getenv("VEPANEL_USERNAME", ""))
+        create_input(1, "👤 Username:", self.user_var)
+
+        self.pwd_var = tk.StringVar(value=os.getenv("VEPANEL_PASSWORD", ""))
+        create_input(2, "🔑 Password:", self.pwd_var, is_password=True)
+
+        self.token_var = tk.StringVar(value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
+        create_input(3, "🤖 Bot Token:", self.token_var)
+
+        self.chat_var = tk.StringVar(value=os.getenv("TELEGRAM_CHAT_ID", ""))
+        create_input(4, "💬 Chat ID:", self.chat_var)
+        
+        # Options frame
+        opt_frame = tk.Frame(root, padx=20, pady=10, bg="#f4f5f7")
+        opt_frame.pack(fill="x", padx=10)
+        
+        self.headless_var = tk.BooleanVar(value=True)
+        chk = tk.Checkbutton(opt_frame, text="Sembunyikan Browser (Mode Headless - Hemat RAM)", variable=self.headless_var, font=label_font, bg="#f4f5f7", activebackground="#f4f5f7", cursor="hand2")
+        chk.pack(anchor="w", padx=5)
+
+        # Buttons frame
+        btn_frame = tk.Frame(root, bg="#f4f5f7")
+        btn_frame.pack(pady=10)
+
+        def create_btn(parent, text, color, command, width=20):
+            return tk.Button(parent, text=text, command=command, bg=color, fg="white", font=btn_font, width=width, relief="flat", cursor="hand2", pady=5)
+
+        self.btn_test = create_btn(btn_frame, "▶ Test Run (1x)", "#3498db", self.run_test, 18)
+        self.btn_test.pack(side="left", padx=8)
+        
+        self.btn_start = create_btn(btn_frame, "⚡ Mulai Auto (30 Menit)", "#2ecc71", self.start_monitoring, 22)
+        self.btn_start.pack(side="left", padx=8)
+        
+        self.btn_stop = create_btn(btn_frame, "⏹ Berhenti", "#95a5a6", self.stop_monitoring, 15)
+        self.btn_stop.config(state=tk.DISABLED)
+        self.btn_stop.pack(side="left", padx=8)
+
+        log_label = tk.Label(root, text="📋 Log Aktivitas Sistem:", font=label_font, bg="#f4f5f7", fg="#2c3e50")
+        log_label.pack(anchor="w", padx=20, pady=(10, 0))
+        
+        self.log_area = scrolledtext.ScrolledText(root, width=80, height=14, font=("Consolas", 9), bg="#2d3436", fg="#dfe6e9", relief="flat")
+        self.log_area.pack(padx=20, pady=(5, 15))
+
+    def log(self, msg):
+        self.log_area.insert(tk.END, msg)
+        self.log_area.see(tk.END)
+
+    def run_test(self):
+        if not self.user_var.get() or not self.pwd_var.get():
+            messagebox.showwarning("Peringatan", "Username dan Password tidak boleh kosong!")
+            return
+            
+        self.btn_test.config(state=tk.DISABLED, bg="#bdc3c7")
+        self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
+        self.log("=== MEMULAI TEST RUN ===\n")
+        
+        def task():
+            run_scraping_cycle(
+                self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
+                self.token_var.get(), self.chat_var.get(), self.log, self.headless_var.get()
+            )
+            self.btn_test.config(state=tk.NORMAL, bg="#3498db")
+            self.btn_start.config(state=tk.NORMAL, bg="#2ecc71")
+            self.log("=== TEST RUN SELESAI ===\n")
+            
+        threading.Thread(target=task, daemon=True).start()
+        
+    def start_monitoring(self):
+        if not self.user_var.get() or not self.pwd_var.get():
+            messagebox.showwarning("Peringatan", "Username dan Password tidak boleh kosong!")
+            return
+            
+        self.is_monitoring = True
+        self.btn_test.config(state=tk.DISABLED, bg="#bdc3c7")
+        self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
+        self.btn_stop.config(state=tk.NORMAL, bg="#e74c3c")
+        self.log("=== MEMULAI PEMANTAUAN OTOMATIS (30 MENIT) ===\n")
+        
+        def loop_task():
+            while self.is_monitoring:
+                run_scraping_cycle(
+                    self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
+                    self.token_var.get(), self.chat_var.get(), self.log, self.headless_var.get()
+                )
+                if not self.is_monitoring:
+                    break
+                
+                self.log(f"[{datetime.now().strftime('%H:%M:%S')}] Pengecekan selesai. Menunggu 30 menit...\n")
+                
+                # Sleep interruptible for 30 minutes
+                for _ in range(30 * 60):
+                    if not self.is_monitoring:
+                        break
+                    time.sleep(1)
+                    
+            self.log("=== PEMANTAUAN OTOMATIS BERHENTI ===\n")
+            self.btn_test.config(state=tk.NORMAL, bg="#3498db")
+            self.btn_start.config(state=tk.NORMAL, bg="#2ecc71")
+            self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
+
+        threading.Thread(target=loop_task, daemon=True).start()
+        
+    def stop_monitoring(self):
+        self.log("Menghentikan pemantauan... (akan berhenti setelah proses/waktu tunggu saat ini selesai)\n")
+        self.is_monitoring = False
+        self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
+
+CURRENT_VERSION = "v14.0.0"
+
+def check_for_updates():
+    if not getattr(sys, 'frozen', False):
+        return # Hanya update versi EXE
+    try:
+        response = requests.get("https://api.github.com/repos/sbastianmarvin-spec/vepanel_monitor/releases/latest", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            latest_version = data.get("tag_name", "")
+            if latest_version and latest_version != CURRENT_VERSION:
+                if messagebox.askyesno("Update Tersedia", f"Versi baru {latest_version} tersedia! (Versi saat ini: {CURRENT_VERSION}).\n\nApakah Anda ingin memperbarui secara otomatis sekarang?"):
+                    download_url = None
+                    for asset in data.get("assets", []):
+                        if asset["name"].endswith(".exe"):
+                            download_url = asset["browser_download_url"]
+                            break
+                    if download_url:
+                        perform_update(download_url)
+    except Exception as e:
+        print(f"Gagal mengecek update: {e}")
+
+def perform_update(download_url):
+    try:
+        import urllib.request
+        import subprocess
+        
+        # Buat pop-up downloading...
+        progress = tk.Toplevel()
+        progress.title("Memperbarui...")
+        progress.geometry("300x100")
+        tk.Label(progress, text="Sedang mengunduh versi terbaru...\nMohon tunggu beberapa detik.", pady=20).pack()
+        progress.update()
+        
+        new_exe = "update_temp.exe"
+        urllib.request.urlretrieve(download_url, new_exe)
+        progress.destroy()
+        
+        current_exe = sys.executable
+        bat_script = f"""@echo off
+echo Sedang mengupdate aplikasi...
+timeout /t 2 /nobreak > NUL
+del "{current_exe}"
+ren "{new_exe}" "{os.path.basename(current_exe)}"
+start "" "{os.path.basename(current_exe)}"
+del "%~f0"
+"""
+        with open("updater.bat", "w") as f:
+            f.write(bat_script)
+            
+        subprocess.Popen("updater.bat", shell=True)
+        sys.exit(0)
+    except Exception as e:
+        messagebox.showerror("Error Update", f"Gagal memperbarui aplikasi:\n{e}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    
+    # Hide window momentarily to check updates
+    root.withdraw()
+    check_for_updates()
+    root.deiconify()
+    
+    app = App(root)
+    root.mainloop()
