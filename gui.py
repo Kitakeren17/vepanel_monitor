@@ -147,7 +147,7 @@ if getattr(sys, 'frozen', False):
 
 load_dotenv()
 
-def send_telegram_message(token, chat_id, message, is_report=False, topic_id=None):
+def send_telegram_message(token, chat_id, message, is_report=False, topic_id=None, log_func=None):
     bot = telebot.TeleBot(token)
     try:
         kwargs = {}
@@ -162,7 +162,10 @@ def send_telegram_message(token, chat_id, message, is_report=False, topic_id=Non
         else:
             bot.send_message(chat_id, message, parse_mode="HTML", **kwargs)
     except Exception as e:
-        print(f"Telegram error: {e}")
+        err = f"❌ GAGAL MENGIRIM KE TELEGRAM: {e}"
+        print(err)
+        if log_func:
+            log_func(err)
 
 def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_func, is_headless):
     def log(msg):
@@ -293,13 +296,13 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
                 log(f"Ditemukan {len(reports_rp)} data Reset Password BARU.")
                 header = f"<b>🚨 LAPORAN RESET PASSWORD ({today_str})</b>\n\n"
                 full_message = header + "\n\n---\n\n".join(reports_rp)
-                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp)
+                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp, log_func=log)
                 
             if reports_ek:
                 log(f"Ditemukan {len(reports_ek)} data Edit Kontak BARU.")
                 header = f"<b>📝 LAPORAN EDIT KONTAK ({today_str})</b>\n\n"
                 full_message = header + "\n\n---\n\n".join(reports_ek)
-                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek)
+                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek, log_func=log)
 
             if reports_rp or reports_ek:
                 log("Semua laporan aktivitas berhasil terkirim ke Telegram (dengan tombol validasi)!")
@@ -312,7 +315,7 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
             else:
                 log("Tidak ada aktivitas BARU. Mengirim info rutin...")
                 no_data_msg = f"ℹ️ <b>LAPORAN RUTIN ({datetime.now().strftime('%H:%M')})</b>\n\nPengecekan selesai. Saat ini <b>TIDAK ADA</b> aktivitas Reset Password / Edit Kontak baru."
-                send_telegram_message(token, chat_id, no_data_msg, topic_id=topic_rp)
+                send_telegram_message(token, chat_id, no_data_msg, topic_id=topic_rp, log_func=log)
                 
             log("Sesi selesai, menutup browser...\n")
             time.sleep(2)
@@ -480,7 +483,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.4"
+CURRENT_VERSION = "v1.3.5"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
