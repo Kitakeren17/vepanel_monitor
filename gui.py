@@ -58,20 +58,24 @@ if getattr(sys, 'frozen', False):
 
 load_dotenv()
 
-def send_telegram_message(token, chat_id, message, is_report=False):
+def send_telegram_message(token, chat_id, message, is_report=False, topic_id=None):
     bot = telebot.TeleBot(token)
     try:
+        kwargs = {}
+        if topic_id and str(topic_id).strip():
+            kwargs['message_thread_id'] = int(str(topic_id).strip())
+            
         if is_report:
             markup = InlineKeyboardMarkup()
             btn = InlineKeyboardButton("⏳ Belum Dicek (Klik untuk Validasi)", callback_data="mark_checked")
             markup.add(btn)
-            bot.send_message(chat_id, message, parse_mode="HTML", reply_markup=markup)
+            bot.send_message(chat_id, message, parse_mode="HTML", reply_markup=markup, **kwargs)
         else:
-            bot.send_message(chat_id, message, parse_mode="HTML")
+            bot.send_message(chat_id, message, parse_mode="HTML", **kwargs)
     except Exception as e:
         print(f"Telegram error: {e}")
 
-def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
+def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic_dp, log_func, is_headless):
     def log(msg):
         log_func(msg + "\n")
         
@@ -105,34 +109,15 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
             page.wait_for_load_state("networkidle")
             time.sleep(2)
 
-            log("Mencari filter Activity...")
+            log("Memuat seluruh tabel aktivitas...")
             try:
                 try:
-                    box = page.get_by_placeholder("Search items")
-                    box.click(timeout=3000)
-                    time.sleep(1)
-                    box.fill("Reset Password")
-                    time.sleep(1)
-                    page.get_by_text(re.compile(r"Reset Password", re.IGNORECASE)).first.click(timeout=3000)
-                    log("> Berhasil memilih opsi 'Reset Password' dari dropdown")
-                except:
-                    page.locator("text='Search items'").first.click(timeout=3000)
-                    time.sleep(1)
-                    page.get_by_text(re.compile(r"Reset Password", re.IGNORECASE)).first.click(timeout=3000)
-                    log("> Berhasil klik dropdown opsi 'Reset Password'")
-                
-                time.sleep(1)
-                page.keyboard.press("Escape")
-                time.sleep(1)
-                
-                try:
                     page.get_by_text(re.compile(r"filter", re.IGNORECASE)).first.click(timeout=3000)
-                    log("> Berhasil menekan tombol FILTER")
+                    log("> Berhasil menekan tombol FILTER (menampilkan semua data)")
                 except Exception as ex:
-                    log(f"> Gagal menekan tombol FILTER (coba klik manual jika perlu).")
+                    log(f"> Gagal menekan tombol FILTER otomatis.")
                 
-                log("> Menunggu 5 detik agar tabel termuat...")
-                time.sleep(5) 
+                time.sleep(3) 
                 
                 # Ubah pagination menjadi 1000
                 try:
@@ -146,8 +131,8 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
                     log("> Info: Gagal ubah ke 1000 baris otomatis.")
                 
             except Exception as e:
-                log(f"Info: Proses klik otomatis terhenti. Silakan pilih manual. Jeda 10 detik...")
-                time.sleep(10)
+                log(f"Info: Jeda 5 detik...")
+                time.sleep(5)
             
             log("Membaca tabel log...")
             rows = page.locator("tbody tr")
@@ -155,7 +140,9 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
             
             log(f"Ditemukan {count} baris data pada tabel.")
             
-            reports = []
+            reports_rp = []
+            reports_ek = []
+            reports_dp = []
             today_str = datetime.now().strftime("%d %b %Y") 
             if today_str.startswith("0"):
                 today_str = today_str[1:]
@@ -191,8 +178,8 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
                     player = cells.nth(3).inner_text().strip()
                     ip_addr = cells.nth(5).inner_text().strip()
                     
-                    if "Reset Password" in activity and today_str in time_text:
-                        log_id = f"{time_text}_{operator}_{player}"
+                    if today_str in time_text:
+                        log_id = f"{time_text}_{operator}_{player}_{activity}"
                         if log_id not in sent_logs:
                             report_item = (
                                 f"⏰ <b>Waktu:</b> {time_text}\n"
@@ -200,28 +187,48 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
                                 f"🎯 <b>Player:</b> {player}\n"
                                 f"🌐 <b>IP:</b> {ip_addr}"
                             )
-                            reports.append(report_item)
-                            sent_logs.append(log_id)
+                            # Cek kategori aktivitas
+                            activity_lower = activity.lower()
+                            if "reset password" in activity_lower:
+                                reports_rp.append(report_item)
+                                sent_logs.append(log_id)
+                            elif "edit kontak" in activity_lower:
+                                reports_ek.append(report_item)
+                                sent_logs.append(log_id)
+                            elif "deposit" in activity_lower:
+                                reports_dp.append(report_item)
+                                sent_logs.append(log_id)
             
-            if reports:
-                log(f"Ditemukan {len(reports)} data reset password BARU. Mengirim ke Telegram...")
+            if reports_rp:
+                log(f"Ditemukan {len(reports_rp)} data Reset Password BARU.")
                 header = f"<b>🚨 LAPORAN RESET PASSWORD ({today_str})</b>\n\n"
-                body = "\n\n---\n\n".join(reports)
+                full_message = header + "\n\n---\n\n".join(reports_rp)
+                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp)
                 
-                full_message = header + body
-                send_telegram_message(token, chat_id, full_message, is_report=True)
-                log("Pesan berhasil terkirim ke Telegram (dengan tombol validasi)!")
+            if reports_ek:
+                log(f"Ditemukan {len(reports_ek)} data Edit Kontak BARU.")
+                header = f"<b>📝 LAPORAN EDIT KONTAK ({today_str})</b>\n\n"
+                full_message = header + "\n\n---\n\n".join(reports_ek)
+                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek)
                 
-                # Simpan riwayat data yang sudah dikirim (maksimal 5000 data terakhir agar tidak berat)
+            if reports_dp:
+                log(f"Ditemukan {len(reports_dp)} data Deposit BARU.")
+                header = f"<b>💰 LAPORAN DEPOSIT ({today_str})</b>\n\n"
+                full_message = header + "\n\n---\n\n".join(reports_dp)
+                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_dp)
+
+            if reports_rp or reports_ek or reports_dp:
+                log("Semua laporan aktivitas berhasil terkirim ke Telegram (dengan tombol validasi)!")
+                # Simpan riwayat data yang sudah dikirim (maksimal 8000 data terakhir agar tidak berat)
                 try:
                     with open(sent_logs_file, 'w') as f:
-                        json.dump(sent_logs[-5000:], f)
+                        json.dump(sent_logs[-8000:], f)
                 except:
                     pass
             else:
-                log("Tidak ada aktivitas Reset Password BARU. Mengirim info ke Telegram...")
-                no_data_msg = f"ℹ️ <b>LAPORAN RUTIN ({datetime.now().strftime('%H:%M')})</b>\n\nPengecekan berhasil dilakukan. Saat ini <b>TIDAK ADA</b> aktivitas Reset Password yang baru."
-                send_telegram_message(token, chat_id, no_data_msg)
+                log("Tidak ada aktivitas BARU. Mengirim info rutin...")
+                no_data_msg = f"ℹ️ <b>LAPORAN RUTIN ({datetime.now().strftime('%H:%M')})</b>\n\nPengecekan selesai. Saat ini <b>TIDAK ADA</b> aktivitas Reset/Kontak/Deposit baru."
+                send_telegram_message(token, chat_id, no_data_msg, topic_id=topic_rp)
                 
             log("Sesi selesai, menutup browser...\n")
             time.sleep(2)
@@ -233,7 +240,7 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("🤖 vePanel Monitor Pro")
-        self.root.geometry("680x750")
+        self.root.geometry("680x880")
         self.root.configure(bg="#f4f5f7")
         
         self.is_monitoring = False
@@ -276,6 +283,15 @@ class App:
         self.chat_var = tk.StringVar(value=os.getenv("TELEGRAM_CHAT_ID", ""))
         create_input(4, "💬 Chat ID:", self.chat_var)
         
+        self.topic_rp_var = tk.StringVar(value=os.getenv("TOPIC_RP", ""))
+        create_input(5, "📌 Topic Reset Password (Kosong=Main):", self.topic_rp_var)
+
+        self.topic_ek_var = tk.StringVar(value=os.getenv("TOPIC_EK", "2"))
+        create_input(6, "📌 Topic Edit Kontak:", self.topic_ek_var)
+
+        self.topic_dp_var = tk.StringVar(value=os.getenv("TOPIC_DP", "4"))
+        create_input(7, "📌 Topic Deposit:", self.topic_dp_var)
+
         # Options frame
         opt_frame = tk.Frame(root, padx=20, pady=10, bg="#f4f5f7")
         opt_frame.pack(fill="x", padx=10)
@@ -324,7 +340,9 @@ class App:
         def task():
             run_scraping_cycle(
                 self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
-                self.token_var.get(), self.chat_var.get(), self.log, self.headless_var.get()
+                self.token_var.get(), self.chat_var.get(), 
+                self.topic_rp_var.get(), self.topic_ek_var.get(), self.topic_dp_var.get(), 
+                self.log, self.headless_var.get()
             )
             self.btn_test.config(state=tk.NORMAL, bg="#3498db")
             self.btn_start.config(state=tk.NORMAL, bg="#2ecc71")
@@ -348,7 +366,9 @@ class App:
             while self.is_monitoring:
                 run_scraping_cycle(
                     self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
-                    self.token_var.get(), self.chat_var.get(), self.log, self.headless_var.get()
+                    self.token_var.get(), self.chat_var.get(), 
+                    self.topic_rp_var.get(), self.topic_ek_var.get(), self.topic_dp_var.get(), 
+                    self.log, self.headless_var.get()
                 )
                 if not self.is_monitoring:
                     break
@@ -373,7 +393,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.1.0"
+CURRENT_VERSION = "v1.2.0"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
