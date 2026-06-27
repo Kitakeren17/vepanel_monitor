@@ -325,13 +325,13 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v14.0.0"
+CURRENT_VERSION = "v1.0.0"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
         return # Hanya update versi EXE
     try:
-        response = requests.get("https://api.github.com/repos/sbastianmarvin-spec/vepanel_monitor/releases/latest", timeout=5)
+        response = requests.get("https://api.github.com/repos/cindylistranina-star/vepanel_monitor/releases/latest", timeout=5)
         if response.status_code == 200:
             data = response.json()
             latest_version = data.get("tag_name", "")
