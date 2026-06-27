@@ -9,21 +9,67 @@ import sys
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 import re
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+active_bot = None
+
+def start_telegram_listener(token):
+    global active_bot
+    if active_bot:
+        active_bot.stop_polling()
+    
+    if not token:
+        return
+        
+    bot = telebot.TeleBot(token)
+    active_bot = bot
+    
+    @bot.callback_query_handler(func=lambda call: call.data == "mark_checked")
+    def handle_check(call):
+        user_name = call.from_user.first_name
+        if call.from_user.last_name:
+            user_name += f" {call.from_user.last_name}"
+            
+        markup = InlineKeyboardMarkup()
+        btn = InlineKeyboardButton(f"✅ Divalidasi oleh: {user_name}", callback_data="already_checked")
+        markup.add(btn)
+        
+        try:
+            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
+            bot.answer_callback_query(call.id, text="Berhasil divalidasi!")
+        except Exception as e:
+            print(f"Error editing message: {e}")
+            
+    @bot.callback_query_handler(func=lambda call: call.data == "already_checked")
+    def handle_already_checked(call):
+        bot.answer_callback_query(call.id, text="Data ini sudah divalidasi!")
+        
+    def poll():
+        try:
+            bot.polling(none_stop=True)
+        except:
+            pass
+            
+    threading.Thread(target=poll, daemon=True).start()
 
 if getattr(sys, 'frozen', False):
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.environ['LOCALAPPDATA'], 'ms-playwright')
 
 load_dotenv()
 
-def send_telegram_message(token, chat_id, message):
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    response = requests.post(url, json=payload)
-    return response.json()
+def send_telegram_message(token, chat_id, message, is_report=False):
+    bot = telebot.TeleBot(token)
+    try:
+        if is_report:
+            markup = InlineKeyboardMarkup()
+            btn = InlineKeyboardButton("⏳ Belum Dicek (Klik untuk Validasi)", callback_data="mark_checked")
+            markup.add(btn)
+            bot.send_message(chat_id, message, parse_mode="HTML", reply_markup=markup)
+        else:
+            bot.send_message(chat_id, message, parse_mode="HTML")
+    except Exception as e:
+        print(f"Telegram error: {e}")
 
 def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
     def log(msg):
@@ -163,8 +209,8 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, log_func, is_headless):
                 body = "\n\n---\n\n".join(reports)
                 
                 full_message = header + body
-                send_telegram_message(token, chat_id, full_message)
-                log("Pesan berhasil terkirim ke Telegram!")
+                send_telegram_message(token, chat_id, full_message, is_report=True)
+                log("Pesan berhasil terkirim ke Telegram (dengan tombol validasi)!")
                 
                 # Simpan riwayat data yang sudah dikirim (maksimal 5000 data terakhir agar tidak berat)
                 try:
@@ -273,6 +319,7 @@ class App:
         self.btn_test.config(state=tk.DISABLED, bg="#bdc3c7")
         self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
         self.log("=== MEMULAI TEST RUN ===\n")
+        start_telegram_listener(self.token_var.get())
         
         def task():
             run_scraping_cycle(
@@ -295,6 +342,7 @@ class App:
         self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
         self.btn_stop.config(state=tk.NORMAL, bg="#e74c3c")
         self.log("=== MEMULAI PEMANTAUAN OTOMATIS (30 MENIT) ===\n")
+        start_telegram_listener(self.token_var.get())
         
         def loop_task():
             while self.is_monitoring:
@@ -325,13 +373,13 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.0.0"
+CURRENT_VERSION = "v1.1.0"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
         return # Hanya update versi EXE
     try:
-        response = requests.get("https://api.github.com/repos/cindylistranina-star/vepanel_monitor/releases/latest", timeout=5)
+        response = requests.get("https://api.github.com/repos/Kitakeren17/vepanel_monitor/releases/latest", timeout=5)
         if response.status_code == 200:
             data = response.json()
             latest_version = data.get("tag_name", "")
