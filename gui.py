@@ -281,7 +281,7 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, topic
                             if "reset password" in activity_lower:
                                 reports_rp.append(report_item)
                                 sent_logs.append(log_id)
-                            elif "edit kontak" in activity_lower:
+                            elif "update player data : contact" in activity_lower or "edit kontak" in activity_lower:
                                 reports_ek.append(report_item)
                                 sent_logs.append(log_id)
                             elif "deposit" in activity_lower:
@@ -488,7 +488,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.0"
+CURRENT_VERSION = "v1.3.1"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
