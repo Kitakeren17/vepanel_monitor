@@ -174,7 +174,14 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
     log("Memulai sesi Playwright...")
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=is_headless)
+            try:
+                browser = p.chromium.launch(headless=is_headless, channel="chrome")
+            except Exception:
+                try:
+                    browser = p.chromium.launch(headless=is_headless, channel="msedge")
+                except Exception as e:
+                    log(f"Gagal membuka Chrome/Edge. Pastikan Google Chrome terinstal. Error: {e}")
+                    raise
             context = browser.new_context()
             page = context.new_page()
 
@@ -483,7 +490,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.5"
+CURRENT_VERSION = "v1.3.6"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
