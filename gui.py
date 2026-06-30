@@ -65,11 +65,11 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
             page.wait_for_load_state("networkidle")
             
             try:
-                page.get_by_text("Report", exact=False).first.click(timeout=5000)
+                page.get_by_text("Report", exact=False).first.click(timeout=15000)
                 time.sleep(1)
-                page.get_by_text("Deposit Report", exact=False).first.click(timeout=5000)
+                page.get_by_text("Deposit Report", exact=False).first.click(timeout=15000)
             except Exception:
-                return "❌ Gagal menavigasi ke menu 'Deposit Report'. Pastikan menu tersebut ada."
+                return "❌ Gagal menavigasi ke menu 'Deposit Report'. Pastikan menu tersebut ada atau koneksi tidak sedang lambat."
                 
             page.wait_for_load_state("networkidle")
             time.sleep(2)
@@ -77,11 +77,22 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
             try:
                 # 1. Fill Username first
                 try:
-                    box = page.get_by_placeholder("Search", exact=False).first
-                    box.fill(target_username)
+                    # 1. Cari kotak dengan tulisan Username
+                    try:
+                        page.get_by_placeholder("Username", exact=False).first.fill(target_username)
+                    except:
+                        # 2. Cari kotak pencarian lain
+                        try:
+                            page.locator("label").filter(has_text="Username").locator("xpath=..").locator("input").fill(target_username)
+                        except:
+                            box = page.get_by_placeholder("Search", exact=False).first
+                            box.fill(target_username)
                 except:
-                    box = page.locator("input[type='text']").first
-                    box.fill(target_username)
+                    try:
+                        box = page.locator("input[type='text']").first
+                        box.fill(target_username)
+                    except:
+                        pass
                 
                 # 2. Click THIS WEEK button
                 try:
@@ -566,7 +577,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.17"
+CURRENT_VERSION = "v1.3.18"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
