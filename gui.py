@@ -160,7 +160,7 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
     except Exception as e:
         return f"❌ Terjadi kesalahan sistem: {e}"
 
-def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_url):
+def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_url, log_func):
     global active_bot
     if active_bot:
         active_bot.stop_polling()
@@ -207,11 +207,14 @@ def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_u
             
         target_username = parts[1]
         bot.reply_to(message, f"🔍 Sedang memproses pengecekan deposit untuk user: <b>{target_username}</b>...\n<i>Mohon tunggu sekitar 15 detik...</i>", parse_mode="HTML")
+        if log_func: log_func(f"Menerima perintah /cekdepo untuk {target_username} dari Telegram.\n")
         
         try:
             result = check_user_deposit_on_demand(target_username, url, vep_user, vep_pwd, is_headless)
             bot.reply_to(message, result, parse_mode="HTML")
+            if log_func: log_func(f"Selesai memproses /cekdepo {target_username}.\n")
         except Exception as e:
+            if log_func: log_func(f"Error memproses /cekdepo: {e}\n")
             bot.reply_to(message, f"❌ Terjadi kesalahan: {e}")
             
     def poll():
@@ -515,7 +518,7 @@ class App:
         self.log("=== MEMULAI TEST RUN ===\n")
         start_telegram_listener(
             self.token_var.get(), self.url_var.get(), self.user_var.get(), 
-            self.pwd_var.get(), self.headless_var.get(), self.webapp_var.get()
+            self.pwd_var.get(), self.headless_var.get(), self.webapp_var.get(), self.log
         )
         
         def task():
@@ -543,7 +546,7 @@ class App:
         self.log("=== MEMULAI PEMANTAUAN OTOMATIS (30 MENIT) ===\n")
         start_telegram_listener(
             self.token_var.get(), self.url_var.get(), self.user_var.get(), 
-            self.pwd_var.get(), self.headless_var.get(), self.webapp_var.get()
+            self.pwd_var.get(), self.headless_var.get(), self.webapp_var.get(), self.log
         )
         
         def loop_task():
@@ -577,7 +580,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.18"
+CURRENT_VERSION = "v1.3.19"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
