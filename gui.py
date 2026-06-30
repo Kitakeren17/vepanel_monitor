@@ -75,31 +75,47 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
             time.sleep(2)
             
             try:
-                page.get_by_text("THIS WEEK", exact=True).first.click(timeout=5000)
-                time.sleep(2)
-            except:
-                pass
-            
-            try:
-                box = page.get_by_placeholder("Search", exact=False).first
-                box.fill(target_username)
-                page.keyboard.press("Enter")
-                time.sleep(3)
-            except:
+                # 1. Fill Username first
                 try:
+                    box = page.get_by_placeholder("Search", exact=False).first
+                    box.fill(target_username)
+                except:
                     box = page.locator("input[type='text']").first
                     box.fill(target_username)
-                    page.keyboard.press("Enter")
+                
+                # 2. Click THIS WEEK button
+                try:
+                    page.get_by_role("button", name=re.compile(r"this week", re.IGNORECASE)).click(timeout=3000)
+                except:
+                    try:
+                        page.get_by_text(re.compile(r"this week", re.IGNORECASE)).first.click(timeout=3000)
+                    except:
+                        pass
+                
+                time.sleep(1)
+                
+                # 3. Click the red FILTER button
+                try:
+                    page.get_by_role("button", name=re.compile(r"filter", re.IGNORECASE)).click(timeout=3000)
+                except:
+                    try:
+                        page.get_by_text("FILTER", exact=True).first.click(timeout=3000)
+                    except:
+                        pass
+                
+                # Wait for results to load
+                page.wait_for_load_state("networkidle")
+                time.sleep(4)
+                
+                # 4. Change pagination to 1000 rows
+                try:
+                    page.get_by_text("10", exact=True).last.click(timeout=2000)
+                    time.sleep(1)
+                    page.get_by_text("1000", exact=True).last.click(timeout=2000)
                     time.sleep(3)
                 except:
-                    pass 
-                
-            try:
-                page.get_by_text("10", exact=True).last.click(timeout=3000)
-                time.sleep(1)
-                page.get_by_text("1000", exact=True).last.click(timeout=3000)
-                time.sleep(4)
-            except:
+                    pass
+            except Exception as e:
                 pass
                 
             rows = page.locator("tbody tr")
@@ -548,7 +564,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.13"
+CURRENT_VERSION = "v1.3.15"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
