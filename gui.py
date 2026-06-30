@@ -492,7 +492,7 @@ class App:
                 self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
                 self.token_var.get(), self.chat_var.get(), 
                 self.topic_rp_var.get(), self.topic_ek_var.get(), 
-                self.log, self.headless_var.get()
+                self.log, self.headless_var.get(), self.webapp_var.get()
             )
             self.btn_test.config(state=tk.NORMAL, bg="#3498db")
             self.btn_start.config(state=tk.NORMAL, bg="#2ecc71")
@@ -521,7 +521,7 @@ class App:
                     self.url_var.get(), self.user_var.get(), self.pwd_var.get(),
                     self.token_var.get(), self.chat_var.get(), 
                     self.topic_rp_var.get(), self.topic_ek_var.get(), 
-                    self.log, self.headless_var.get()
+                    self.log, self.headless_var.get(), self.webapp_var.get()
                 )
                 if not self.is_monitoring:
                     break
@@ -546,7 +546,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.10"
+CURRENT_VERSION = "v1.3.11"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
