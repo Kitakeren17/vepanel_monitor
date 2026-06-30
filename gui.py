@@ -543,7 +543,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.8"
+CURRENT_VERSION = "v1.3.9"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
