@@ -39,6 +39,12 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
             time.sleep(2)
             
             try:
+                page.get_by_text("THIS WEEK", exact=True).first.click(timeout=5000)
+                time.sleep(2)
+            except:
+                pass
+            
+            try:
                 box = page.get_by_placeholder("Search", exact=False).first
                 box.fill(target_username)
                 page.keyboard.press("Enter")
@@ -490,7 +496,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.6"
+CURRENT_VERSION = "v1.3.7"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
