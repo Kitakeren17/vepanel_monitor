@@ -9,6 +9,42 @@ import sys
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 import re
+
+import json
+import requests
+import threading
+
+def log_to_sheet(webapp_url, action, payload):
+    if not webapp_url or not webapp_url.startswith("http"): return
+    def _send():
+        try:
+            data = {"action": action}
+            data.update(payload)
+            requests.post(webapp_url, data=data, timeout=10)
+        except Exception as e:
+            print("Error logging to sheet:", e)
+    threading.Thread(target=_send, daemon=True).start()
+
+def save_msg_map(msg_id, log_ids):
+    try:
+        data = {}
+        if os.path.exists("msg_map.json"):
+            with open("msg_map.json", "r") as f:
+                data = json.load(f)
+        data[str(msg_id)] = log_ids
+        with open("msg_map.json", "w") as f:
+            json.dump(data, f)
+    except: pass
+
+def get_msg_map(msg_id):
+    try:
+        if os.path.exists("msg_map.json"):
+            with open("msg_map.json", "r") as f:
+                data = json.load(f)
+            return data.get(str(msg_id), [])
+    except: pass
+    return []
+
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -93,7 +129,7 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
     except Exception as e:
         return f"❌ Terjadi kesalahan sistem: {e}"
 
-def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless):
+def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_url):
     global active_bot
     if active_bot:
         active_bot.stop_polling()
@@ -103,6 +139,7 @@ def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless):
         
     bot = telebot.TeleBot(token)
     active_bot = bot
+    
     
     @bot.callback_query_handler(func=lambda call: call.data == "mark_checked")
     def handle_check(call):
@@ -117,8 +154,14 @@ def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless):
         try:
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
             bot.answer_callback_query(call.id, text="Berhasil divalidasi!")
+            
+            # Update sheets
+            log_ids = get_msg_map(call.message.message_id)
+            for lid in log_ids:
+                log_to_sheet(webapp_url, "update", {"id": lid, "validator": user_name})
         except Exception as e:
             print(f"Error editing message: {e}")
+
             
     @bot.callback_query_handler(func=lambda call: call.data == "already_checked")
     def handle_already_checked(call):
@@ -173,7 +216,7 @@ def send_telegram_message(token, chat_id, message, is_report=False, topic_id=Non
         if log_func:
             log_func(err)
 
-def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_func, is_headless):
+def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_func, is_headless, webapp_url):
     def log(msg):
         log_func(msg + "\n")
         
@@ -295,11 +338,13 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
                             # Cek kategori aktivitas
                             activity_lower = activity.lower()
                             if "reset password" in activity_lower:
-                                reports_rp.append(report_item)
+                                reports_rp.append((report_item, log_id))
                                 sent_logs.append(log_id)
+                                log_to_sheet(webapp_url, "create", {"id": log_id, "waktu": time_text, "tipe": "Reset Password", "operator": operator, "player": player})
                             elif ("update player data" in activity_lower and "contact" in activity_lower) or "edit kontak" in activity_lower:
-                                reports_ek.append(report_item)
+                                reports_ek.append((report_item, log_id))
                                 sent_logs.append(log_id)
+                                log_to_sheet(webapp_url, "create", {"id": log_id, "waktu": time_text, "tipe": "Edit Kontak", "operator": operator, "player": player})
             
             log(f"\nSelesai menyaring! Hasil yang didapat:")
             log(f"• Reset Password: {len(reports_rp)} data baru")
@@ -308,14 +353,16 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
             if reports_rp:
                 log(f"Ditemukan {len(reports_rp)} data Reset Password BARU.")
                 header = f"<b>🚨 LAPORAN RESET PASSWORD ({today_str})</b>\n\n"
-                full_message = header + "\n\n---\n\n".join(reports_rp)
-                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp, log_func=log)
+                full_message = header + "\n\n---\n\n".join([r[0] for r in reports_rp])
+                msg_id = send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp, log_func=log)
+                if msg_id: save_msg_map(msg_id, [r[1] for r in reports_rp])
                 
             if reports_ek:
                 log(f"Ditemukan {len(reports_ek)} data Edit Kontak BARU.")
                 header = f"<b>📝 LAPORAN EDIT KONTAK ({today_str})</b>\n\n"
-                full_message = header + "\n\n---\n\n".join(reports_ek)
-                send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek, log_func=log)
+                full_message = header + "\n\n---\n\n".join([r[0] for r in reports_ek])
+                msg_id = send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek, log_func=log)
+                if msg_id: save_msg_map(msg_id, [r[1] for r in reports_ek])
 
             if reports_rp or reports_ek:
                 log("Semua laporan aktivitas berhasil terkirim ke Telegram (dengan tombol validasi)!")
@@ -384,10 +431,10 @@ class App:
         create_input(4, "💬 Chat ID:", self.chat_var)
         
         self.topic_rp_var = tk.StringVar(value=os.getenv("TOPIC_RP", ""))
-        create_input(5, "📌 Topic Reset Password (Kosong=Main):", self.topic_rp_var)
+        create_input(6, "📌 Topic Reset Password (Kosong=Main):", self.topic_rp_var)
 
         self.topic_ek_var = tk.StringVar(value=os.getenv("TOPIC_EK", "2"))
-        create_input(6, "📌 Topic Edit Kontak:", self.topic_ek_var)
+        create_input(7, "📌 Topic Edit Kontak:", self.topic_ek_var)
 
         # Options frame
         opt_frame = tk.Frame(root, padx=20, pady=10, bg="#f4f5f7")
@@ -434,7 +481,7 @@ class App:
         self.log("=== MEMULAI TEST RUN ===\n")
         start_telegram_listener(
             self.token_var.get(), self.url_var.get(), self.user_var.get(), 
-            self.pwd_var.get(), self.headless_var.get()
+            self.pwd_var.get(), self.headless_var.get(), self.webapp_var.get()
         )
         
         def task():
@@ -462,7 +509,7 @@ class App:
         self.log("=== MEMULAI PEMANTAUAN OTOMATIS (30 MENIT) ===\n")
         start_telegram_listener(
             self.token_var.get(), self.url_var.get(), self.user_var.get(), 
-            self.pwd_var.get(), self.headless_var.get()
+            self.pwd_var.get(), self.headless_var.get(), self.webapp_var.get()
         )
         
         def loop_task():
@@ -496,7 +543,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.7"
+CURRENT_VERSION = "v1.3.8"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
