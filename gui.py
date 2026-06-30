@@ -566,7 +566,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.16"
+CURRENT_VERSION = "v1.3.17"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
@@ -607,8 +607,13 @@ def perform_update(download_url):
         current_exe = sys.executable
         bat_script = f"""@echo off
 echo Sedang mengupdate aplikasi...
-timeout /t 2 /nobreak > NUL
-del "{current_exe}"
+taskkill /F /PID {os.getpid()} > NUL 2>&1
+:loop
+del "{current_exe}" > NUL 2>&1
+if exist "{current_exe}" (
+    timeout /t 1 /nobreak > NUL
+    goto loop
+)
 ren "{new_exe}" "{os.path.basename(current_exe)}"
 start "" "{os.path.basename(current_exe)}"
 del "%~f0"
