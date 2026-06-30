@@ -122,8 +122,10 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
             if not found_rows:
                 return f"⚠️ Tidak ditemukan riwayat deposit untuk user '<b>{target_username}</b>' di data terbaru."
                 
+            import html
+            safe_text = html.escape(found_rows[0])
             result_msg = f"✅ <b>Deposit Terakhir ditemukan untuk {target_username}:</b>\n\n"
-            result_msg += f"<code>{found_rows[0]}</code>"
+            result_msg += f"<code>{safe_text}</code>"
             
             return result_msg
     except Exception as e:
@@ -546,7 +548,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.11"
+CURRENT_VERSION = "v1.3.12"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
