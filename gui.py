@@ -424,11 +424,14 @@ class App:
         self.pwd_var = tk.StringVar(value=os.getenv("VEPANEL_PASSWORD", ""))
         create_input(2, "🔑 Password:", self.pwd_var, is_password=True)
 
+        self.webapp_var = tk.StringVar(value=os.getenv("WEBAPP_URL", ""))
+        create_input(3, "📌 URL Google Sheets Web App (Opsional):", self.webapp_var)
+
         self.token_var = tk.StringVar(value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
-        create_input(3, "🤖 Bot Token:", self.token_var)
+        create_input(4, "🤖 Bot Token:", self.token_var)
 
         self.chat_var = tk.StringVar(value=os.getenv("TELEGRAM_CHAT_ID", ""))
-        create_input(4, "💬 Chat ID:", self.chat_var)
+        create_input(5, "💬 Chat ID:", self.chat_var)
         
         self.topic_rp_var = tk.StringVar(value=os.getenv("TOPIC_RP", ""))
         create_input(6, "📌 Topic Reset Password (Kosong=Main):", self.topic_rp_var)
@@ -543,7 +546,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.9"
+CURRENT_VERSION = "v1.3.10"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
