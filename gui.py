@@ -388,7 +388,7 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("🤖 vePanel Monitor Pro")
+        self.root.title(f"🤖 vePanel Monitor Pro {CURRENT_VERSION}")
         self.root.geometry("680x880")
         self.root.configure(bg="#f4f5f7")
         
@@ -548,7 +548,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.12"
+CURRENT_VERSION = "v1.3.13"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
