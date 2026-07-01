@@ -158,7 +158,8 @@ def check_user_deposit_on_demand(target_username, url, user, pwd, is_headless):
             
             return result_msg.strip()
     except Exception as e:
-        return f"❌ Terjadi kesalahan sistem: {e}"
+        import html
+        return f"❌ Terjadi kesalahan sistem:\n<code>{html.escape(str(e))}</code>"
 
 def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_url, log_func):
     global active_bot
@@ -215,7 +216,7 @@ def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_u
             if log_func: log_func(f"Selesai memproses /cekdepo {target_username}.\n")
         except Exception as e:
             if log_func: log_func(f"Error memproses /cekdepo: {e}\n")
-            bot.reply_to(message, f"❌ Terjadi kesalahan: {e}")
+            bot.reply_to(message, f"❌ Terjadi kesalahan Telegram API: {e}")
             
     def poll():
         try:
@@ -580,7 +581,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.19"
+CURRENT_VERSION = "v1.3.20"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
