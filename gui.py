@@ -188,9 +188,14 @@ def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_u
             bot.answer_callback_query(call.id, text="Berhasil divalidasi!")
             
             # Update sheets
-            log_ids = get_msg_map(call.message.message_id)
+            import re
+            log_ids = re.findall(r"ref:\s*(.+)", call.message.text) if call.message.text else []
+            
+            if not log_ids:
+                log_ids = get_msg_map(call.message.message_id)
+                
             for lid in log_ids:
-                log_to_sheet(webapp_url, "update", {"id": lid, "validator": user_name})
+                log_to_sheet(webapp_url, "update", {"id": lid.strip(), "validator": user_name})
         except Exception as e:
             print(f"Error editing message: {e}")
 
@@ -368,7 +373,8 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
                                 f"⏰ <b>Waktu:</b> {time_text}\n"
                                 f"👤 <b>Operator:</b> {operator}\n"
                                 f"🎯 <b>Player:</b> {player}\n"
-                                f"🌐 <b>IP:</b> {ip_addr}"
+                                f"🌐 <b>IP:</b> {ip_addr}\n"
+                                f"<i>ref: {log_id}</i>"
                             )
                             # Cek kategori aktivitas
                             activity_lower = activity.lower()
@@ -581,7 +587,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.20"
+CURRENT_VERSION = "v1.3.21"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
