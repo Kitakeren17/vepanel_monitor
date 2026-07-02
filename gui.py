@@ -14,15 +14,17 @@ import json
 import requests
 import threading
 
-def log_to_sheet(webapp_url, action, payload):
+def log_to_sheet(webapp_url, action, payload, log_func=None):
     if not webapp_url or not webapp_url.startswith("http"): return
     def _send():
         try:
             data = {"action": action}
             data.update(payload)
-            requests.post(webapp_url, data=data, timeout=10)
+            response = requests.post(webapp_url, data=data, timeout=10)
+            if response.status_code != 200 and log_func:
+                log_func(f"\n[Warning] Sheet HTTP Status: {response.status_code}")
         except Exception as e:
-            print("Error logging to sheet:", e)
+            if log_func: log_func(f"\n[Error] Gagal mengirim ke Sheet: {str(e)}")
     threading.Thread(target=_send, daemon=True).start()
 
 def save_msg_map(msg_id, log_ids):
@@ -195,7 +197,7 @@ def start_telegram_listener(token, url, vep_user, vep_pwd, is_headless, webapp_u
                 log_ids = get_msg_map(call.message.message_id)
                 
             for lid in log_ids:
-                log_to_sheet(webapp_url, "update", {"id": lid.strip(), "validator": user_name})
+                log_to_sheet(webapp_url, "update", {"id": lid.strip(), "validator": user_name}, log_func)
         except Exception as e:
             print(f"Error editing message: {e}")
 
@@ -403,11 +405,11 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
                             if "reset password" in activity_lower:
                                 reports_rp.append((report_item, log_id))
                                 sent_logs.append(log_id)
-                                log_to_sheet(webapp_url, "create", {"id": log_id, "waktu": time_text, "tipe": "Reset Password", "operator": operator, "player": player})
+                                log_to_sheet(webapp_url, "create", {"id": log_id, "waktu": time_text, "tipe": "Reset Password", "operator": operator, "player": player}, log_func)
                             elif ("update player data" in activity_lower and "contact" in activity_lower) or "edit kontak" in activity_lower:
                                 reports_ek.append((report_item, log_id))
                                 sent_logs.append(log_id)
-                                log_to_sheet(webapp_url, "create", {"id": log_id, "waktu": time_text, "tipe": "Edit Kontak", "operator": operator, "player": player})
+                                log_to_sheet(webapp_url, "create", {"id": log_id, "waktu": time_text, "tipe": "Edit Kontak", "operator": operator, "player": player}, log_func)
             
             log(f"\nSelesai menyaring! Hasil yang didapat:")
             log(f"• Reset Password: {len(reports_rp)} data baru")
@@ -628,7 +630,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.23"
+CURRENT_VERSION = "v1.3.24"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
