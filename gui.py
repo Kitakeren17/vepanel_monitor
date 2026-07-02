@@ -236,6 +236,28 @@ if getattr(sys, 'frozen', False):
 
 load_dotenv()
 
+def save_env(env_data):
+    try:
+        lines = []
+        if os.path.exists(".env"):
+            with open(".env", "r") as f:
+                lines = f.readlines()
+        
+        env_dict = {}
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                env_dict[k.strip()] = v.strip()
+                
+        env_dict.update(env_data)
+        
+        with open(".env", "w") as f:
+            for k, v in env_dict.items():
+                f.write(f"{k}={v}\n")
+    except Exception as e:
+        print(f"Failed to save .env: {e}")
+
 def send_telegram_message(token, chat_id, message, is_report=False, topic_id=None, log_func=None):
     bot = telebot.TeleBot(token)
     try:
@@ -519,11 +541,25 @@ class App:
         self.log_area.insert(tk.END, msg)
         self.log_area.see(tk.END)
 
+    def save_current_settings(self):
+        env_data = {
+            "VEPANEL_URL": self.url_var.get(),
+            "VEPANEL_USERNAME": self.user_var.get(),
+            "VEPANEL_PASSWORD": self.pwd_var.get(),
+            "WEBAPP_URL": self.webapp_var.get(),
+            "TELEGRAM_BOT_TOKEN": self.token_var.get(),
+            "TELEGRAM_CHAT_ID": self.chat_var.get(),
+            "TOPIC_RP": self.topic_rp_var.get(),
+            "TOPIC_EK": self.topic_ek_var.get()
+        }
+        save_env(env_data)
+
     def run_test(self):
         if not self.user_var.get() or not self.pwd_var.get():
             messagebox.showwarning("Peringatan", "Username dan Password tidak boleh kosong!")
             return
-            
+        
+        self.save_current_settings()
         self.btn_test.config(state=tk.DISABLED, bg="#bdc3c7")
         self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
         self.log("=== MEMULAI TEST RUN ===\n")
@@ -550,6 +586,7 @@ class App:
             messagebox.showwarning("Peringatan", "Username dan Password tidak boleh kosong!")
             return
             
+        self.save_current_settings()
         self.is_monitoring = True
         self.btn_test.config(state=tk.DISABLED, bg="#bdc3c7")
         self.btn_start.config(state=tk.DISABLED, bg="#bdc3c7")
@@ -591,7 +628,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.22"
+CURRENT_VERSION = "v1.3.23"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
