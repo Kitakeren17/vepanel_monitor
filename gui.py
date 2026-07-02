@@ -394,16 +394,20 @@ def run_scraping_cycle(url, user, pwd, token, chat_id, topic_rp, topic_ek, log_f
             if reports_rp:
                 log(f"Ditemukan {len(reports_rp)} data Reset Password BARU.")
                 header = f"<b>🚨 LAPORAN RESET PASSWORD ({today_str})</b>\n\n"
-                full_message = header + "\n\n---\n\n".join([r[0] for r in reports_rp])
-                msg_id = send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp, log_func=log)
-                if msg_id: save_msg_map(msg_id, [r[1] for r in reports_rp])
+                for i in range(0, len(reports_rp), 10):
+                    chunk = reports_rp[i:i + 10]
+                    full_message = header + "\n\n---\n\n".join([r[0] for r in chunk])
+                    msg_id = send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_rp, log_func=log)
+                    if msg_id: save_msg_map(msg_id, [r[1] for r in chunk])
                 
             if reports_ek:
                 log(f"Ditemukan {len(reports_ek)} data Edit Kontak BARU.")
                 header = f"<b>📝 LAPORAN EDIT KONTAK ({today_str})</b>\n\n"
-                full_message = header + "\n\n---\n\n".join([r[0] for r in reports_ek])
-                msg_id = send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek, log_func=log)
-                if msg_id: save_msg_map(msg_id, [r[1] for r in reports_ek])
+                for i in range(0, len(reports_ek), 10):
+                    chunk = reports_ek[i:i + 10]
+                    full_message = header + "\n\n---\n\n".join([r[0] for r in chunk])
+                    msg_id = send_telegram_message(token, chat_id, full_message, is_report=True, topic_id=topic_ek, log_func=log)
+                    if msg_id: save_msg_map(msg_id, [r[1] for r in chunk])
 
             if reports_rp or reports_ek:
                 log("Semua laporan aktivitas berhasil terkirim ke Telegram (dengan tombol validasi)!")
@@ -587,7 +591,7 @@ class App:
         self.is_monitoring = False
         self.btn_stop.config(state=tk.DISABLED, bg="#95a5a6")
 
-CURRENT_VERSION = "v1.3.21"
+CURRENT_VERSION = "v1.3.22"
 
 def check_for_updates():
     if not getattr(sys, 'frozen', False):
